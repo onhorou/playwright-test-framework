@@ -9,6 +9,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **Poetry** 2.x — dependency and environment management
 - **Pytest** + **pytest-playwright** — test runner and Playwright fixtures
 - **Pydantic v2** + **pydantic-settings** — DTOs and configuration
+- **Loguru** — logging
 
 ## Requirements
 
@@ -47,6 +48,29 @@ settings = get_settings()
 settings.base_url
 settings.db_url
 ```
+
+## Logging
+
+Логирование построено на **loguru** (`utils/logger.py`). Инициализация выполняется
+один раз за тестовую сессию в `tests/conftest.py` (`setup_logging()`):
+
+- цветной вывод в `stdout`;
+- запись в файл `logs/framework.log` с ротацией (`10 MB`), сжатием (`zip`) и
+  удалением файлов старше `10 days`.
+
+Получить логгер и привязать метаданные к логам блока:
+
+```python
+from utils.logger import log_context, logger
+
+logger.info("Старт сценария")
+
+with log_context(user_id=42, booking_id="bk-1"):
+    logger.info("Бронирование создано")  # в логе появится user_id=42 booking_id=bk-1
+```
+
+Для каждого теста логи автоматически перехватываются и прикрепляются к отчёту Allure
+(как только подключён `allure-pytest`).
 
 ## Run tests
 

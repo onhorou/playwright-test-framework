@@ -12,7 +12,8 @@ dependencies = [
     "pytest (>=9.1.1,<10.0.0)",
     "pytest-playwright (>=0.10.0,<0.11.0)",
     "pydantic (>=2.14.0,<3.0.0)",
-    "pydantic-settings (>=2.15.0,<3.0.0)"
+    "pydantic-settings (>=2.15.0,<3.0.0)",
+    "loguru (>=0.7.3,<0.8.0)"
 ]
 
 
