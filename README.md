@@ -23,6 +23,31 @@ poetry env use python3.13
 poetry install
 ```
 
+## Configuration
+
+Настройки читаются из переменных окружения (`config/settings.py`, на базе `pydantic-settings`).
+Создайте файл `.env` в корне проекта по шаблону `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+| Переменная | Назначение | Пример |
+|------------|-----------|--------|
+| `BASE_URL` | Базовый URL тестируемого приложения | `http://localhost:8000` |
+| `DB_URL`   | Строка подключения к базе данных PostgreSQL | `postgresql://user:password@localhost:5432/database` |
+
+Файл `.env` не коммитится в Git. В коде настройки получаются через фабрику `get_settings()`
+(кэшируется через `lru_cache`):
+
+```python
+from config.settings import get_settings
+
+settings = get_settings()
+settings.base_url
+settings.db_url
+```
+
 ## Run tests
 
 ```bash
