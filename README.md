@@ -10,6 +10,9 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **Pytest** + **pytest-playwright** — test runner and Playwright fixtures
 - **Pydantic v2** + **pydantic-settings** — DTOs and configuration
 - **Loguru** — logging
+- **Ruff** — linter and formatter
+- **Mypy** — static type checking
+- **pre-commit** — git hooks
 
 ## Requirements
 
@@ -22,6 +25,9 @@ built with **Playwright**, **Pytest** and **Poetry**.
 # create (or reuse) the virtualenv with Python 3.13 and install dependencies
 poetry env use python3.13
 poetry install
+
+# install git hooks (ruff + mypy run before every commit)
+poetry run pre-commit install
 ```
 
 ## Configuration
@@ -71,6 +77,29 @@ with log_context(user_id=42, booking_id="bk-1"):
 
 Для каждого теста логи автоматически перехватываются и прикрепляются к отчёту Allure
 (как только подключён `allure-pytest`).
+
+## Linting & type checking
+
+Инструменты качества кода настраиваются в `pyproject.toml`:
+
+- **ruff** (`[tool.ruff]`) — линтер и сортировка импортов; набор правил
+  `E, W, F, I, PT, S` (PEP 8, Pyflakes, isort, pytest-style, bandit).
+  Для тестов правило `S101` (`assert`) отключено.
+- **mypy** (`[tool.mypy]`) — статическая типизация: включён режим `strict` и
+  плагин `pydantic.mypy`; для пакета `tests.*` аннотации типов не обязательны.
+
+```bash
+poetry run ruff check .      # линтинг
+poetry run ruff format .     # автоформатирование
+poetry run mypy .            # проверка типов
+```
+
+Хуки pre-commit (`.pre-commit-config.yaml`) прогоняют ruff и mypy перед каждым
+коммитом (инструменты берутся из Poetry-окружения):
+
+```bash
+poetry run pre-commit run --all-files   # запустить хуки вручную по всем файлам
+```
 
 ## Run tests
 

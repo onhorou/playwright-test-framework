@@ -28,10 +28,9 @@ _ATTACH_LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}"
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _configure_logging() -> Iterator[None]:
+def _configure_logging() -> None:
     """Один раз за сессию настроить sink'и `loguru` (stdout + файл с ротацией)."""
     setup_logging()
-    yield
 
 
 def _attach_logs_to_allure(name: str, lines: list[str]) -> None:

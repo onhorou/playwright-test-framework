@@ -1,0 +1,30 @@
+# Хуки pre-commit: перед каждым коммитом прогоняются линтер (ruff) и
+# проверка типов (mypy). Оба инструмента запускаются из Poetry-окружения
+# проекта (`poetry run ...`), поэтому их версии совпадают с зафиксированными
+# в `poetry.lock` — единый источник версий.
+#
+# `verbose: true` (на уровне хука) — печатать вывод инструмента, даже когда
+# хук проходит (Passed), чтобы запуск линтеров был виден при каждом коммите.
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        description: Линтинг и сортировка импортов (ruff).
+        entry: poetry run ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+        verbose: true
+
+      - id: mypy
+        name: mypy
+        description: Статическая проверка типов (mypy).
+        entry: poetry run mypy .
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
+        verbose: true
