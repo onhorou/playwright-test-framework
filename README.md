@@ -28,6 +28,9 @@ poetry install
 
 # install git hooks (ruff + mypy run before every commit)
 poetry run pre-commit install
+
+# download the Chromium browser used by UI tests (one-off)
+poetry run playwright install chromium
 ```
 
 ## Configuration
@@ -100,6 +103,32 @@ bearer-токен: сервер ставит cookie заголовком `Set-Co
 
 ```bash
 poetry run pytest tests/api/   # только API-тесты
+```
+
+## UI layer
+
+UI-тесты построены на паттерне **Page Object Model (POM)** и нативных фикстурах
+Playwright (`pytest-playwright`).
+
+- `pages/base_page.py` — `BasePage`, базовая обёртка над `Page`: навигация и
+  операции над элементами по атрибуту `data-testid`.
+- `pages/home_page.py` — `HomePage`, каталог планов и шапка с состоянием аккаунта.
+- `pages/login_page.py` — `LoginPage`, форма входа (slide-over drawer).
+
+В приложении нет отдельного маршрута входа: кнопка **Sign In / Register** в шапке
+открывает панель входа. После успешного входа шапка показывает email пользователя
+и ссылку на дашборд.
+
+Фикстуры UI-тестов определены в `tests/ui/conftest.py`. `base_url` браузерного
+контекста берётся из настроек (`get_settings().base_url`), поэтому Page Object'ы
+работают с относительными путями, а источник URL остаётся единым — `.env`.
+
+```bash
+# один раз установите браузер
+poetry run playwright install chromium
+
+poetry run pytest tests/ui/            # UI-тесты (headless)
+poetry run pytest --headed tests/ui/   # с видимым окном браузера
 ```
 
 ## Linting & type checking
