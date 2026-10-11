@@ -11,6 +11,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **Pydantic v2** + **pydantic-settings** — DTOs and configuration
 - **psycopg 3** — PostgreSQL client for DB tests
 - **Loguru** — logging
+- **pytest-xdist** + **filelock** — parallel execution and cross-process isolation
 - **Ruff** — linter and formatter
 - **Mypy** — static type checking
 - **pre-commit** — git hooks
@@ -67,6 +68,9 @@ settings.db_url
 - цветной вывод в `stdout`;
 - запись в файл `logs/framework.log` с ротацией (`10 MB`), сжатием (`zip`) и
   удалением файлов старше `10 days`.
+
+При параллельном запуске (`pytest-xdist`) каждый процесс пишет в собственный
+файл `logs/framework-<worker_id>.log` — процессы не мешают друг другу.
 
 Получить логгер и привязать метаданные к логам блока:
 
@@ -192,6 +196,40 @@ def test_created_user_is_stored_in_database(user_db, created_users):
 poetry run pytest tests/db/   # только DB-тесты
 ```
 
+## Parallel execution & process isolation
+
+Тесты можно запускать в несколько процессов `pytest-xdist`:
+
+```bash
+poetry run pytest -n 3          # 3 воркера
+poetry run pytest -n auto       # число воркеров = числу CPU
+```
+
+Изоляция процессов обеспечивается на двух уровнях:
+
+- **Логи не пересекаются.** Каждый воркер пишет в собственный файл
+  `logs/framework-<worker_id>.log` (при обычном запуске — `logs/framework.log`).
+  Имя файла формирует `utils/logger.log_file_for_worker()`, а применяет
+  сессионная фикстура `_configure_logging` (`tests/conftest.py`). Так исключается
+  одновременная запись и ротация одного файла несколькими процессами.
+- **Общие артефакты защищены `FileLock`.** Сессионная фикстура `run_manifest`
+  ведёт общий для всех воркеров манифест `logs/run.json` (идентификатор запуска,
+  время старта, список воркеров). Цикл «прочитать → изменить → записать» одного
+  файла несколькими процессами — это гонка (Race Conditions); `filelock.FileLock`
+  сериализует доступ, поэтому манифест остаётся консистентным. Манифест
+  обнуляется при смене запуска (`PYTEST_XDIST_TESTRUNUID`) и отражает только
+  текущую сессию.
+
+```python
+from filelock import FileLock
+
+
+@pytest.fixture(scope="session")
+def run_manifest(worker_id: str) -> dict[str, Any]:
+    with FileLock(f"{RUN_MANIFEST_FILE}.lock"):
+        ...  # критическая секция: общий файл изменяется под блокировкой
+```
+
 ## Linting & type checking
 
 Инструменты качества кода настраиваются в `pyproject.toml`:
@@ -218,5 +256,6 @@ poetry run pre-commit run --all-files   # запустить хуки вручн
 ## Run tests
 
 ```bash
-poetry run pytest
+poetry run pytest            # вся тестовая сессия
+poetry run pytest -n 3       # параллельно, в 3 процесса (pytest-xdist)
 ```

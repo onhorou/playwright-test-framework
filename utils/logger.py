@@ -4,6 +4,8 @@
 
 - :func:`setup_logging` — идемпотентная настройка sink'ов: цветной вывод в `stdout`
   и запись в файл ``logs/framework.log`` с ротацией, сжатием и удалением старых файлов;
+- :func:`log_file_for_worker` — выбор лог-файла под конкретный процесс
+  `pytest-xdist` (изоляция записи между воркерами);
 - :func:`log_context` — контекстный менеджер для привязки метаданных
   (ID пользователя, ID заказа и т.п.) ко всем логам внутри блока.
 
@@ -34,12 +36,37 @@ if TYPE_CHECKING:
 
     from loguru import Message, Record
 
-__all__ = ["LOG_FILE", "LOGS_DIR", "log_context", "logger", "setup_logging"]
+__all__ = ["LOG_FILE", "LOGS_DIR", "log_context", "log_file_for_worker", "logger", "setup_logging"]
 
 #: Каталог с лог-файлами фреймворка (исключён из Git в `.gitignore`).
 LOGS_DIR: Path = PROJECT_ROOT / "logs"
-#: Основной файл логов фреймворка.
+#: Основной файл логов фреймворка (однопроцессный запуск).
 LOG_FILE: Path = LOGS_DIR / "framework.log"
+
+#: Идентификатор управляющего процесса `pytest-xdist` (вне распределённого запуска).
+_MASTER_WORKER_ID = "master"
+
+
+def log_file_for_worker(worker_id: str | None) -> Path:
+    """Вернуть путь к лог-файлу для конкретного процесса `pytest-xdist`.
+
+    При обычном (однопроцессном) запуске, а также для управляющего процесса
+    (`master`) используется общий :data:`LOG_FILE`. В распределённом режиме
+    каждый воркер (`gw0`, `gw1`, …) пишет в собственный файл
+    ``logs/framework-<worker_id>.log`` — это исключает одновременную запись и
+    ротацию одного и того же файла несколькими процессами (Race Conditions).
+
+    Args:
+        worker_id: Идентификатор воркера из фикстуры `worker_id` (`pytest-xdist`)
+            или ``None``/``"master"`` для нераспределённого запуска.
+
+    Returns:
+        Path: Путь к лог-файлу соответствующего процесса.
+    """
+    if not worker_id or worker_id == _MASTER_WORKER_ID:
+        return LOG_FILE
+    return LOGS_DIR / f"framework-{worker_id}.log"
+
 
 #: Ключ в `extra` записи, под которым :func:`log_context` хранит метаданные.
 _CONTEXT_KEY = "context"
@@ -84,6 +111,7 @@ def _stdout_sink(message: Message) -> None:
 
 def setup_logging(
     *,
+    worker_id: str | None = None,
     level: str = "DEBUG",
     rotation: str = "10 MB",
     retention: str = "10 days",
@@ -93,12 +121,14 @@ def setup_logging(
     Удаляет sink по умолчанию и добавляет два обработчика:
 
     - цветной вывод в `stdout` (уровень ``level``);
-    - файловый sink ``logs/framework.log`` с ротацией ``rotation``,
+    - файловый sink (см. :func:`log_file_for_worker`) с ротацией ``rotation``,
       удалением старых файлов ``retention`` и сжатием в ``zip``.
 
     При повторном вызове настройка не дублируется (флаг ``_configured``).
 
     Args:
+        worker_id: Идентификатор воркера `pytest-xdist`; под распределённым
+            запуском переключает файловый sink на отдельный лог каждого процесса.
         level: Минимальный уровень логирования для обоих sink'ов.
         rotation: Условие ротации файла логов (размер или время).
         retention: Срок хранения старых лог-файлов до удаления.
@@ -107,6 +137,8 @@ def setup_logging(
 
     if _configured:
         return
+
+    log_file = log_file_for_worker(worker_id)
 
     logger.remove()
     logger.configure(extra=dict(_DEFAULT_EXTRA))
@@ -120,7 +152,7 @@ def setup_logging(
         diagnose=False,
     )
     logger.add(
-        sink=LOG_FILE,
+        sink=log_file,
         level=level,
         format=_format_record,
         colorize=False,

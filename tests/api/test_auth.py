@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from api_manager.api_client import APIClient
 from api_manager.endpoints.auth_api import AuthAPI
 from models.api import LoginResponse, MeResponse, MessageResponse, UserCreateRequest
@@ -53,14 +55,36 @@ def test_me_requires_authentication(api_client: APIClient) -> None:
     assert body.message == "Not authenticated."
 
 
-def test_login_requires_email_and_full_name(api_client: APIClient) -> None:
-    """`POST /auth/login` без обязательных полей отвечает `422`."""
-    response = api_client.post("/auth/login", data={"email": "", "full_name": ""})
+@pytest.mark.parametrize(
+    ("payload", "expected_message"),
+    [
+        ({}, "Email and full name are required."),
+        ({"email": "", "full_name": ""}, "Email and full name are required."),
+        ({"email": "", "full_name": "Test User"}, "Email and full name are required."),
+        ({"email": "user@example.com", "full_name": ""}, "Email and full name are required."),
+        (
+            {"email": "not-an-email", "full_name": "Test User"},
+            "Please enter a valid email address.",
+        ),
+    ],
+    ids=["missing-both", "empty-both", "empty-email", "empty-name", "malformed-email"],
+)
+def test_login_requires_email_and_full_name(
+    api_client: APIClient,
+    payload: dict[str, str],
+    expected_message: str,
+) -> None:
+    """Негативные наборы тела `POST /auth/login` отвечают `422`.
+
+    Кейсы заданы через `@pytest.mark.parametrize` — это рекомендованный способ
+    хранить негативные данные (вместо отдельной функции на каждый случай).
+    """
+    response = api_client.post("/auth/login", data=payload)
 
     assert response.status == 422
     body = MessageResponse.model_validate(response.json())
     assert body.ok is False
-    assert "required" in body.message.lower()
+    assert body.message == expected_message
 
 
 def test_logout_clears_session(auth_api: AuthAPI, api_client: APIClient) -> None:

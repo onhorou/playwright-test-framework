@@ -6,35 +6,37 @@ from uuid import uuid4
 
 from loguru import logger
 
-from utils.logger import LOG_FILE, log_context, setup_logging
+from utils.logger import log_context, log_file_for_worker, setup_logging
 
 
-def test_log_file_is_created_and_written() -> None:
+def test_log_file_is_created_and_written(worker_id: str) -> None:
     """Файловый sink создаётся и получает сообщения без ANSI-кодов."""
     setup_logging()
     marker = f"log-file-marker-{uuid4()}"
+    log_file = log_file_for_worker(worker_id)
 
     logger.info(marker)
     logger.complete()  # дождаться записи файлового sink (enqueue=True)
 
-    assert LOG_FILE.is_file(), f"Лог-файл не создан: {LOG_FILE}"
+    assert log_file.is_file(), f"Лог-файл не создан: {log_file}"
 
-    content = LOG_FILE.read_text(encoding="utf-8")
+    content = log_file.read_text(encoding="utf-8")
 
     assert marker in content, "Сообщение не попало в лог-файл"
     assert "\x1b[" not in content, "В лог-файле не должно быть ANSI-кодов цвета"
 
 
-def test_setup_logging_is_idempotent() -> None:
+def test_setup_logging_is_idempotent(worker_id: str) -> None:
     """Повторный вызов `setup_logging()` не дублирует sink'и."""
     setup_logging()
     setup_logging()
     marker = f"idempotency-marker-{uuid4()}"
+    log_file = log_file_for_worker(worker_id)
 
     logger.info(marker)
     logger.complete()
 
-    content = LOG_FILE.read_text(encoding="utf-8")
+    content = log_file.read_text(encoding="utf-8")
 
     assert content.count(marker) == 1, "Сообщение записано более одного раза — sink дублируется"
 
