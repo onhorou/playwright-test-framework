@@ -78,6 +78,30 @@ with log_context(user_id=42, booking_id="bk-1"):
 Для каждого теста логи автоматически перехватываются и прикрепляются к отчёту Allure
 (как только подключён `allure-pytest`).
 
+## API layer
+
+API-тесты работают поверх нативного `APIRequestContext` из Playwright — отдельной
+HTTP-библиотеки (например, `requests`) в проекте нет.
+
+- `models/api/` — Pydantic-DTO:
+  - `UserCreateRequest` — тело запроса `POST /auth/login` (создаёт аккаунт при первом входе);
+  - `UserResponse` — профиль пользователя (`id`, `email`, `full_name`);
+  - `LoginResponse`, `MeResponse`, `MessageResponse` — ответы авторизации.
+- `api_manager/api_client.py` — `APIClient`, базовая обёртка над `APIRequestContext`
+  (методы `get`/`post`/`put`/`patch`/`delete`, логирование метода, URL и статуса).
+- `api_manager/endpoints/auth_api.py` — `AuthAPI` с методами `login()`, `logout()`, `me()`.
+
+Авторизация в приложении — **сессионная HttpOnly-cookie** (`dl_session`), а не
+bearer-токен: сервер ставит cookie заголовком `Set-Cookie`, а Playwright-контекст
+автоматически отправляет её в последующих запросах.
+
+Фикстуры `api_client` и `auth_api` определены в `tests/api/conftest.py`.
+`APIRequestContext` создаётся на каждый тест (изоляция сессионных cookie).
+
+```bash
+poetry run pytest tests/api/   # только API-тесты
+```
+
 ## Linting & type checking
 
 Инструменты качества кода настраиваются в `pyproject.toml`:
