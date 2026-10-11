@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import allure
 from loguru import logger
 
 from utils.logger import log_context, log_file_for_worker, setup_logging
 
 
+@allure.feature("Observability")
+@allure.story("Logging")
+@allure.title("Log file is created and written")
 def test_log_file_is_created_and_written(worker_id: str) -> None:
     """Файловый sink создаётся и получает сообщения без ANSI-кодов."""
     setup_logging()
@@ -26,6 +30,9 @@ def test_log_file_is_created_and_written(worker_id: str) -> None:
     assert "\x1b[" not in content, "В лог-файле не должно быть ANSI-кодов цвета"
 
 
+@allure.feature("Observability")
+@allure.story("Logging")
+@allure.title("setup_logging is idempotent")
 def test_setup_logging_is_idempotent(worker_id: str) -> None:
     """Повторный вызов `setup_logging()` не дублирует sink'и."""
     setup_logging()
@@ -41,6 +48,9 @@ def test_setup_logging_is_idempotent(worker_id: str) -> None:
     assert content.count(marker) == 1, "Сообщение записано более одного раза — sink дублируется"
 
 
+@allure.feature("Observability")
+@allure.story("Logging")
+@allure.title("log_context adds metadata to output")
 def test_log_context_adds_metadata_to_output() -> None:
     """`log_context` добавляет метаданные во все логи внутри блока."""
     setup_logging()
@@ -60,6 +70,9 @@ def test_log_context_adds_metadata_to_output() -> None:
     assert captured == ["booking created | user_id=42 booking_id=bk-1"]
 
 
+@allure.feature("Observability")
+@allure.story("Logging")
+@allure.title("log_context is not leaked outside the block")
 def test_log_context_is_not_leaked_outside_block() -> None:
     """Вне блока `log_context` контекст не сохраняется."""
     setup_logging()

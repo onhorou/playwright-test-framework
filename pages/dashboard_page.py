@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import allure
+
 from pages.base_page import BasePage
 
 __all__ = ["DashboardPage"]
@@ -31,6 +33,7 @@ class DashboardPage(BasePage):
     EMPTY_STATE = "subscription-empty"
     BROWSE_PLANS_LINK = "browse-plans-link"
 
+    @allure.step("Open the dashboard")
     def open(self) -> None:
         """Открыть личный кабинет (защищённый маршрут ``/dashboard``)."""
         self.goto("/dashboard")

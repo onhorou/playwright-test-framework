@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import allure
 import pytest
 
 from api_manager.api_client import APIClient
@@ -23,6 +24,9 @@ def _unique_credentials() -> UserCreateRequest:
     )
 
 
+@allure.feature("Authentication")
+@allure.story("Login")
+@allure.title("Login creates an account and returns the profile")
 def test_login_creates_account_and_returns_profile(auth_api: AuthAPI) -> None:
     """`POST /auth/login` создаёт пользователя и возвращает его профиль."""
     credentials = _unique_credentials()
@@ -35,6 +39,9 @@ def test_login_creates_account_and_returns_profile(auth_api: AuthAPI) -> None:
     assert login.user.full_name == credentials.full_name
 
 
+@allure.feature("Authentication")
+@allure.story("Session")
+@allure.title("Session cookie grants access to the current user")
 def test_session_cookie_allows_accessing_current_user(auth_api: AuthAPI) -> None:
     """После входа `GET /api/me` отдаёт того же пользователя (по cookie)."""
     created = auth_api.login(_unique_credentials())
@@ -45,6 +52,9 @@ def test_session_cookie_allows_accessing_current_user(auth_api: AuthAPI) -> None
     assert me.user == created.user
 
 
+@allure.feature("Authentication")
+@allure.story("Session")
+@allure.title("GET /api/me requires authentication")
 def test_me_requires_authentication(api_client: APIClient) -> None:
     """Без сессии `GET /api/me` отвечает `401 Not authenticated`."""
     response = api_client.get("/api/me")
@@ -55,6 +65,9 @@ def test_me_requires_authentication(api_client: APIClient) -> None:
     assert body.message == "Not authenticated."
 
 
+@allure.feature("Authentication")
+@allure.story("Login validation")
+@allure.title("Login rejects invalid credentials")
 @pytest.mark.parametrize(
     ("payload", "expected_message"),
     [
@@ -87,6 +100,9 @@ def test_login_requires_email_and_full_name(
     assert body.message == expected_message
 
 
+@allure.feature("Authentication")
+@allure.story("Logout")
+@allure.title("Logout clears the session")
 def test_logout_clears_session(auth_api: AuthAPI, api_client: APIClient) -> None:
     """`POST /auth/logout` сбрасывает сессию — `/api/me` снова отдаёт `401`."""
     auth_api.login(_unique_credentials())

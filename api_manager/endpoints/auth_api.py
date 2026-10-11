@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import allure
+
 from models.api import LoginResponse, MeResponse, MessageResponse, UserCreateRequest
 
 if TYPE_CHECKING:
@@ -32,16 +34,19 @@ class AuthAPI:
     def __init__(self, client: APIClient) -> None:
         self._client = client
 
+    @allure.step("Log in via API (POST /auth/login)")
     def login(self, credentials: UserCreateRequest) -> LoginResponse:
         """Войти (или зарегистрироваться) и получить профиль из ответа."""
         response = self._client.post(self.LOGIN_PATH, data=credentials.model_dump())
         return LoginResponse.model_validate(response.json())
 
+    @allure.step("Log out (POST /auth/logout)")
     def logout(self) -> MessageResponse:
         """Завершить сессию (сервер сбрасывает сессионную cookie)."""
         response = self._client.post(self.LOGOUT_PATH)
         return MessageResponse.model_validate(response.json())
 
+    @allure.step("Fetch the current user (GET /api/me)")
     def me(self) -> MeResponse:
         """Вернуть текущего аутентифицированного пользователя (``GET /api/me``)."""
         response = self._client.get(self.ME_PATH)

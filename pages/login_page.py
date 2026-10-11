@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import allure
+
 from pages.base_page import BasePage
 
 __all__ = ["LoginPage"]
@@ -25,6 +27,7 @@ class LoginPage(BasePage):
     SUBMIT_BUTTON = "login-submit-btn"
     ERROR = "login-error"
 
+    @allure.step("Wait for the login drawer to open")
     def open(self) -> None:
         """Дождаться, пока панель входа станет видимой (открытой)."""
         self.wait_for_visible(self.DRAWER)
@@ -33,15 +36,18 @@ class LoginPage(BasePage):
         """Проверить, что панель входа находится в открытом состоянии."""
         return self.attribute(self.DRAWER, "data-state") == "open"
 
+    @allure.step("Fill in the login form")
     def fill_credentials(self, email: str, full_name: str) -> None:
         """Заполнить поля email и полного имени."""
         self.fill(self.EMAIL_INPUT, email)
         self.fill(self.NAME_INPUT, full_name)
 
+    @allure.step("Submit the login form")
     def submit(self) -> None:
         """Отправить форму входа."""
         self.click(self.SUBMIT_BUTTON)
 
+    @allure.step("Sign in as {email}")
     def login(self, email: str, full_name: str) -> None:
         """Выполнить вход: заполнить форму и отправить её."""
         self.fill_credentials(email, full_name)

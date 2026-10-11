@@ -13,6 +13,7 @@ requires-python = ">=3.13,<4.0"
 dependencies = [
     "pytest (>=9.1.1,<10.0.0)",
     "pytest-playwright (>=0.10.0,<0.11.0)",
+    "allure-pytest (>=2.16.0,<3.0.0)",
     "pydantic (>=2.14.0,<3.0.0)",
     "pydantic-settings (>=2.15.0,<3.0.0)",
     "loguru (>=0.7.3,<0.8.0)",
@@ -59,11 +60,18 @@ plugins = ["pydantic.mypy"]
 strict = true
 
 [[tool.mypy.overrides]]
-# В тестах допускаем отсутствие аннотаций типов у функций.
-module = "tests.*"
-disallow_untyped_defs = false
+# `allure-python` не поставляет аннотаций типов, поэтому декораторы `@allure.*`
+# mypy видит как нетипизированные и считает размеченные функции «нетипизированными»
+# (теряется их сигнатура). Отключаем эту проверку в слоях, которые размечают
+# отчётность: Page Object'ах, API-клиентах и тестах.
+module = ["pages.*", "api_manager.*", "tests.*"]
+disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-# `allure-pytest` подключается в M8; импорт «мягкий» — стабы не требуем.
-module = ["allure", "allure.*"]
-ignore_missing_imports = true
+# В тестах допускаем отсутствие аннотаций типов у функций и вызовы
+# нетипизированных функций (в том числе `allure.*`): тесты — тонкий слой
+# поверх типизированного фреймворка.
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+warn_return_any = false

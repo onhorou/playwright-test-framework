@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import allure
+
 from db_manager.crud.plan_db import PlanDB
 from db_manager.crud.subscription_db import SubscriptionDB
 from db_manager.crud.user_db import UserDB
@@ -22,6 +24,9 @@ def _unique_email() -> str:
     return f"db-{uuid4()}@example.com"
 
 
+@allure.feature("Database")
+@allure.story("Users CRUD")
+@allure.title("Created user is stored in the database")
 def test_created_user_is_stored_in_database(
     user_db: UserDB,
     created_users: list[str],
@@ -43,6 +48,9 @@ def test_created_user_is_stored_in_database(
     assert stored.full_name == "DB Test User"
 
 
+@allure.feature("Database")
+@allure.story("Catalogue")
+@allure.title("Plans are read from the database")
 def test_plans_are_read_from_database(plan_db: PlanDB) -> None:
     """Справочник тарифных планов читается из БД и валидируется схемой."""
     plans = plan_db.list_all()
@@ -51,6 +59,9 @@ def test_plans_are_read_from_database(plan_db: PlanDB) -> None:
     assert all(plan.id > 0 for plan in plans)
 
 
+@allure.feature("Database")
+@allure.story("Teardown")
+@allure.title("Subscription is deleted with its user on teardown")
 def test_subscription_is_deleted_with_user_on_teardown(
     user_db: UserDB,
     plan_db: PlanDB,

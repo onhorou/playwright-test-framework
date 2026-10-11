@@ -12,6 +12,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **psycopg 3** — PostgreSQL client for DB tests
 - **Loguru** — logging
 - **pytest-xdist** + **filelock** — parallel execution and cross-process isolation
+- **Allure** (allure-pytest) — test reporting: features/stories, steps, failure screenshots
 - **Ruff** — linter and formatter
 - **Mypy** — static type checking
 - **pre-commit** — git hooks
@@ -84,7 +85,7 @@ with log_context(user_id=42, booking_id="bk-1"):
 ```
 
 Для каждого теста логи автоматически перехватываются и прикрепляются к отчёту Allure
-(как только подключён `allure-pytest`).
+(см. раздел [Reporting](#reporting-allure)).
 
 ## API layer
 
@@ -230,6 +231,60 @@ def run_manifest(worker_id: str) -> dict[str, Any]:
         ...  # критическая секция: общий файл изменяется под блокировкой
 ```
 
+## Reporting (Allure)
+
+Отчётность построена на плагине **allure-pytest**. Результаты любого запуска
+складываются в `allure-results/` — это задано в `pytest.ini`, поэтому отдельно
+передавать флаг не нужно:
+
+```ini
+[pytest]
+addopts = --alluredir=allure-results --clean-alluredir
+```
+
+Чтобы получить HTML-отчёт, нужен **Allure CLI** (требуется Java 11+):
+
+```bash
+# установить CLI (один раз)
+npm install -g allure-commandline
+
+# или запускать разово без установки
+npx allure-commandline --help
+```
+
+```bash
+poetry run pytest                                        # прогон пишет allure-results/
+allure generate allure-results -o allure-report --clean  # статический HTML-отчёт
+allure serve allure-results                              # локальный сервер с авто-обновлением
+```
+
+Что попадает в отчёт:
+
+- **структура Features → Stories → Tests** — аннотации `@allure.feature`,
+  `@allure.story`, `@allure.title` в тестах;
+- **пошаговое выполнение** — декораторы `@allure.step` в Page Object'ах
+  (`pages/`) и API-клиентах (`api_manager/`); вложенные шаги показывают, на
+  каком бизнес-действии упал тест;
+- **скриншот и URL страницы при падении UI-теста** — хук
+  `pytest_runtest_makereport` (`tests/conftest.py`) автоматически прикладывает
+  вложения `screenshot-on-failure` (`full_page`) и `url-on-failure`;
+- **логи loguru по каждому тесту** — фикстура `_capture_logs` прикладывает
+  перехваченные логи вложением `loguru logs — <test>`.
+
+Пример аннотаций:
+
+```python
+import allure
+
+
+@allure.feature("Authentication")
+@allure.story("Login")
+@allure.title("Login creates an account and returns the profile")
+def test_login_creates_account_and_returns_profile(auth_api: AuthAPI) -> None:
+    # arrange → act → assert над бизнес-действиями API-клиента / Page Object
+    ...
+```
+
 ## Linting & type checking
 
 Инструменты качества кода настраиваются в `pyproject.toml`:
@@ -259,3 +314,6 @@ poetry run pre-commit run --all-files   # запустить хуки вручн
 poetry run pytest            # вся тестовая сессия
 poetry run pytest -n 3       # параллельно, в 3 процесса (pytest-xdist)
 ```
+
+Каждый запуск пишет результаты Allure в `allure-results/` — как посмотреть отчёт,
+см. раздел [Reporting](#reporting-allure).

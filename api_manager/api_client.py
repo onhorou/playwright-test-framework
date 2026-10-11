@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import allure
+
 from utils.logger import logger
 
 if TYPE_CHECKING:
@@ -37,22 +39,27 @@ class APIClient:
         """
         return self._request
 
+    @allure.step("GET {url}")
     def get(self, url: str, **kwargs: Any) -> APIResponse:
         """Выполнить ``GET``-запрос и вернуть ответ."""
         return self._send("GET", self._request.get, url, **kwargs)
 
+    @allure.step("POST {url}")
     def post(self, url: str, **kwargs: Any) -> APIResponse:
         """Выполнить ``POST``-запрос и вернуть ответ."""
         return self._send("POST", self._request.post, url, **kwargs)
 
+    @allure.step("PUT {url}")
     def put(self, url: str, **kwargs: Any) -> APIResponse:
         """Выполнить ``PUT``-запрос и вернуть ответ."""
         return self._send("PUT", self._request.put, url, **kwargs)
 
+    @allure.step("PATCH {url}")
     def patch(self, url: str, **kwargs: Any) -> APIResponse:
         """Выполнить ``PATCH``-запрос и вернуть ответ."""
         return self._send("PATCH", self._request.patch, url, **kwargs)
 
+    @allure.step("DELETE {url}")
     def delete(self, url: str, **kwargs: Any) -> APIResponse:
         """Выполнить ``DELETE``-запрос и вернуть ответ."""
         return self._send("DELETE", self._request.delete, url, **kwargs)

@@ -1,16 +1,15 @@
 """Глобальные фикстуры Pytest: логирование, изоляция процессов и Allure.
 
-Модуль решает три задачи:
+Модуль решает четыре задачи:
 
 - один раз за сессию включает sink'и `loguru` (:func:`utils.logger.setup_logging`),
   причём под `pytest-xdist` каждый процесс пишет в собственный лог-файл
   (см. :func:`utils.logger.log_file_for_worker`) — изоляция процессов;
 - ведёт общий для всех воркеров манифест запуска (``logs/run.json``) под
   `filelock.FileLock` — защита общего файла от гонок (Race Conditions);
-- для каждого теста перехватывает логи `loguru` и прикрепляет их к отчёту Allure.
-
-`allure-pytest` подключается в отдельном майлстоуне; пока он не установлен,
-прикрепление логов молча пропускается (см. :func:`_attach_logs_to_allure`).
+- для каждого теста перехватывает логи `loguru` и прикрепляет их к отчёту Allure;
+- при падении UI-теста автоматически прикрепляет к отчёту Allure скриншот
+  страницы и её URL (хук :func:`pytest_runtest_makereport`).
 """
 
 from __future__ import annotations
@@ -20,14 +19,16 @@ import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+import allure
 import pytest
 from filelock import FileLock
 from loguru import logger
+from playwright.sync_api import Page
 
 from utils.logger import LOGS_DIR, setup_logging
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator, Iterator
     from pathlib import Path
 
     from loguru import Message
@@ -108,17 +109,8 @@ def _configure_logging(run_manifest: dict[str, Any], worker_id: str) -> None:
 
 
 def _attach_logs_to_allure(name: str, lines: list[str]) -> None:
-    """Прикрепить перехваченные логи к отчёту Allure, если он доступен.
-
-    Импорт `allure` выполняется «мягко»: пока пакет `allure-pytest` не установлен,
-    функция ничего не делает.
-    """
+    """Прикрепить перехваченные логи теста к отчёту Allure."""
     if not lines:
-        return
-
-    try:
-        import allure
-    except ImportError:
         return
 
     allure.attach(
@@ -143,3 +135,56 @@ def _capture_logs(request: pytest.FixtureRequest) -> Iterator[None]:
     finally:
         logger.remove(handler_id)
         _attach_logs_to_allure(request.node.name, records)
+
+
+def _attach_failure_screenshot(item: pytest.Item) -> None:
+    """Прикрепить к отчёту Allure скриншот страницы и её URL.
+
+    Скриншот доступен только у UI-тестов: страница берётся из фикстур теста
+    (`page`, которую предоставляет `pytest-playwright`). Если страницы нет либо
+    её состояние уже не позволяет снять скриншот, диагностика пропускается, а
+    причина пишется в лог — падение самого теста это не маскирует.
+    """
+    if not isinstance(item, pytest.Function):
+        return
+
+    page = item.funcargs.get("page")
+    if not isinstance(page, Page):
+        return
+
+    try:
+        screenshot = page.screenshot(full_page=True)
+    except Exception as error:
+        logger.warning("Не удалось снять скриншот при падении {}: {}", item.name, error)
+        return
+
+    allure.attach(
+        screenshot,
+        name="screenshot-on-failure",
+        attachment_type=allure.attachment_type.PNG,
+    )
+    allure.attach(
+        page.url,
+        name="url-on-failure",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_makereport(
+    item: pytest.Item,
+    call: pytest.CallInfo[Any],
+) -> Generator[None, Any, None]:
+    """Прикрепить скриншот к отчёту Allure при падении UI-теста.
+
+    Хук вызывается для каждой фазы теста (``setup``/``call``/``teardown``) и
+    после её завершения отдаёт готовый отчёт (`TestReport`). Нас интересует
+    фаза ``call``: именно она фиксирует падение проверок тела теста, когда
+    страница ещё открыта (фикстуры закрываются уже после неё). Для API/DB-тестов
+    и для пройденных тестов хук ничего не делает.
+    """
+    outcome = yield
+    report: pytest.TestReport = outcome.get_result()
+
+    if report.when == "call" and report.failed:
+        _attach_failure_screenshot(item)

@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import allure
+
 from pages.base_page import BasePage
 from pages.login_page import LoginPage
 
@@ -22,6 +24,7 @@ class HomePage(BasePage):
     USER_EMAIL = "user-email"
     DASHBOARD_LINK = "dashboard-link"
 
+    @allure.step("Open the catalogue page")
     def open(self) -> None:
         """Открыть страницу каталога (корневой маршрут приложения)."""
         self.goto("/")
@@ -30,6 +33,7 @@ class HomePage(BasePage):
         """Проверить, что шапка отображает авторизованного пользователя."""
         return self.is_visible(self.USER_MENU)
 
+    @allure.step("Wait for the header to become authenticated")
     def wait_until_authenticated(self) -> None:
         """Дождаться перехода шапки в авторизованное состояние."""
         self.wait_for_visible(self.USER_MENU)
@@ -38,6 +42,7 @@ class HomePage(BasePage):
         """Вернуть email текущего авторизованного пользователя из шапки."""
         return self.text(self.USER_EMAIL)
 
+    @allure.step("Open the login drawer")
     def open_login_drawer(self) -> None:
         """Открыть панель входа кликом по кнопке в шапке и дождаться её появления."""
         self.click(self.LOGIN_OPEN_BUTTON)

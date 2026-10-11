@@ -10,10 +10,15 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import allure
+
 from pages.home_page import HomePage
 from pages.login_page import LoginPage
 
 
+@allure.feature("Authentication")
+@allure.story("Sign in via UI")
+@allure.title("Signing in through the drawer reaches the authenticated state")
 def test_login_via_ui_reaches_authenticated_state(
     home_page: HomePage,
     login_page: LoginPage,

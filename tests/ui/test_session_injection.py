@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import allure
+
 from models.api import UserResponse
 from pages.dashboard_page import DashboardPage
 from pages.home_page import HomePage
@@ -19,6 +21,9 @@ if TYPE_CHECKING:
     from playwright.sync_api import Page
 
 
+@allure.feature("Authentication")
+@allure.story("Session injection")
+@allure.title("Dashboard opens with an API-injected session")
 def test_dashboard_opens_with_api_injected_session(
     authenticated_user: UserResponse,
     home_page: HomePage,
@@ -33,6 +38,9 @@ def test_dashboard_opens_with_api_injected_session(
     assert dashboard_page.is_empty() is True
 
 
+@allure.feature("Authentication")
+@allure.story("Session injection")
+@allure.title("Dashboard redirects an anonymous visitor")
 def test_dashboard_redirects_anonymous_visitor(
     home_page: HomePage,
     dashboard_page: DashboardPage,
