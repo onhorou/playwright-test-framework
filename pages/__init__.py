@@ -2,6 +2,7 @@
 
 Пакет содержит базовый класс страницы (:class:`pages.base_page.BasePage`)
 и Page Object'ы конкретных страниц/компонентов (например,
-:class:`pages.home_page.HomePage` и :class:`pages.login_page.LoginPage`).
+:class:`pages.home_page.HomePage`, :class:`pages.login_page.LoginPage` и
+:class:`pages.dashboard_page.DashboardPage`).
 Тесты оперируют бизнес-действиями страниц и не работают с селекторами напрямую.
 """

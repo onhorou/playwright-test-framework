@@ -131,6 +131,29 @@ poetry run pytest tests/ui/            # UI-тесты (headless)
 poetry run pytest --headed tests/ui/   # с видимым окном браузера
 ```
 
+### Session injection (API → UI)
+
+Защищённые разделы (например, `/dashboard`) UI-тесты открывают без прохождения
+формы входа: сессия создаётся через API и инъецируется в браузерный контекст.
+
+- Фикстура `authenticated_user` (`tests/ui/conftest.py`) выполняет
+  `POST /auth/login` в отдельном `APIRequestContext`, получает сессионную
+  HttpOnly-cookie `dl_session` и переносит её в текущий `BrowserContext`
+  (`context.add_cookies`). Фикстура возвращает профиль пользователя.
+- `pages/dashboard_page.py` — `DashboardPage`, Page Object личного кабинета
+  (email пользователя, карточка подписки, доступ к библиотеке, пустое состояние).
+
+```python
+def test_dashboard_opens_with_api_injected_session(
+    authenticated_user, dashboard_page, home_page
+):
+    dashboard_page.open()  # защищённый раздел сразу авторизован
+    assert home_page.user_email() == authenticated_user.email
+```
+
+Без сессии `/dashboard` перенаправляет анонимного посетителя на каталог
+(`/?login=required`) — это проверяет отдельный негативный тест.
+
 ## Linting & type checking
 
 Инструменты качества кода настраиваются в `pyproject.toml`:
