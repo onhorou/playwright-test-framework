@@ -15,7 +15,8 @@ dependencies = [
     "pytest-playwright (>=0.10.0,<0.11.0)",
     "pydantic (>=2.14.0,<3.0.0)",
     "pydantic-settings (>=2.15.0,<3.0.0)",
-    "loguru (>=0.7.3,<0.8.0)"
+    "loguru (>=0.7.3,<0.8.0)",
+    "psycopg[binary] (>=3.3.6,<4.0.0)"
 ]
 
 

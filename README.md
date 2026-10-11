@@ -9,6 +9,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **Poetry** 2.x — dependency and environment management
 - **Pytest** + **pytest-playwright** — test runner and Playwright fixtures
 - **Pydantic v2** + **pydantic-settings** — DTOs and configuration
+- **psycopg 3** — PostgreSQL client for DB tests
 - **Loguru** — logging
 - **Ruff** — linter and formatter
 - **Mypy** — static type checking
@@ -144,15 +145,52 @@ poetry run pytest --headed tests/ui/   # с видимым окном брауз
   (email пользователя, карточка подписки, доступ к библиотеке, пустое состояние).
 
 ```python
-def test_dashboard_opens_with_api_injected_session(
-    authenticated_user, dashboard_page, home_page
-):
+def test_dashboard_opens_with_api_injected_session(authenticated_user, dashboard_page, home_page):
     dashboard_page.open()  # защищённый раздел сразу авторизован
     assert home_page.user_email() == authenticated_user.email
 ```
 
 Без сессии `/dashboard` перенаправляет анонимного посетителя на каталог
 (`/?login=required`) — это проверяет отдельный негативный тест.
+
+## Database layer
+
+DB-тесты работают с PostgreSQL напрямую через **psycopg 3**; подключение и SQL
+инкапсулированы в слое `db_manager/`.
+
+- `models/db/` — Pydantic-схемы таблиц: `User` (`users`), `Plan` (`plans`),
+  `Subscription` (`subscriptions`) и enum-типы (`BillingCycle`, `AccessLevel`,
+  `PlanCategory`, `SubscriptionStatus`).
+- `db_manager/db_client.py` — `DBClient`, обёртка над соединением `psycopg`
+  (`dict_row`, `autocommit`, логирование запросов). Строки возвращаются
+  словарями и валидируются схемами из `models.db`.
+- `db_manager/crud/` — репозитории таблиц по сущностям: `UserDB`, `PlanDB`,
+  `SubscriptionDB` (методы `create` / `get_*` / `count_*` / `delete_*`).
+
+Фикстуры DB-тестов определены в `tests/db/conftest.py`: `db_client`, `user_db`,
+`plan_db`, `subscription_db`. Соединение открывается на каждый тест и
+закрывается после него.
+
+### Data teardown
+
+Фикстура `created_users` реализует автоматическую **зачистку данных**: тест
+регистрирует в ней email созданных сущностей, а после завершения теста они
+удаляются из БД. Связанные подписки удаляются каскадом (внешний ключ
+`ON DELETE CASCADE`). Результат удаления проверяется сразу — если запись
+осталась, тест помечается как ошибочный.
+
+```python
+def test_created_user_is_stored_in_database(user_db, created_users):
+    email = "db-user@example.com"
+    created_users.append(email)  # запись будет удалена после теста
+
+    created = user_db.create(email=email, full_name="DB Test User")
+    assert user_db.get_by_email(email).id == created.id
+```
+
+```bash
+poetry run pytest tests/db/   # только DB-тесты
+```
 
 ## Linting & type checking
 
