@@ -64,6 +64,13 @@ services:
     depends_on:
       webapp:
         condition: service_healthy
+    # Набор тестов выбирается переменной окружения PYTEST_ARGS (значение
+    # подставляет Compose из окружения запускающей оболочки). Примеры:
+    #   PYTEST_ARGS='-m smoke'       — критический набор;
+    #   PYTEST_ARGS='-m regression'  — полный набор;
+    #   PYTEST_ARGS='tests/api'      — отдельный путь/тест.
+    # Без переменной выполняется весь набор (поведение по умолчанию).
+    command: ["sh", "-c", "exec pytest ${PYTEST_ARGS:-}"]
     environment:
       # Внутри сети Compose приложение и БД доступны по именам сервисов.
       BASE_URL: http://webapp:8000

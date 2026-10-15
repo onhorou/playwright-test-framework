@@ -11,11 +11,15 @@ from __future__ import annotations
 from uuid import uuid4
 
 import allure
+import pytest
 
 from pages.home_page import HomePage
 from pages.login_page import LoginPage
 
+pytestmark = pytest.mark.regression
 
+
+@pytest.mark.smoke
 @allure.feature("Authentication")
 @allure.story("Sign in via UI")
 @allure.title("Signing in through the drawer reaches the authenticated state")

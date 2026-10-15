@@ -15,6 +15,8 @@ from api_manager.api_client import APIClient
 from api_manager.endpoints.auth_api import AuthAPI
 from models.api import LoginResponse, MeResponse, MessageResponse, UserCreateRequest
 
+pytestmark = pytest.mark.regression
+
 
 def _unique_credentials() -> UserCreateRequest:
     """Сгенерировать данные нового уникального пользователя."""
@@ -24,6 +26,7 @@ def _unique_credentials() -> UserCreateRequest:
     )
 
 
+@pytest.mark.smoke
 @allure.feature("Authentication")
 @allure.story("Login")
 @allure.title("Login creates an account and returns the profile")
@@ -39,6 +42,7 @@ def test_login_creates_account_and_returns_profile(auth_api: AuthAPI) -> None:
     assert login.user.full_name == credentials.full_name
 
 
+@pytest.mark.smoke
 @allure.feature("Authentication")
 @allure.story("Session")
 @allure.title("Session cookie grants access to the current user")

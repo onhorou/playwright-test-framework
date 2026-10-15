@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import allure
+import pytest
 
 from models.api import UserResponse
 from pages.dashboard_page import DashboardPage
@@ -20,7 +21,10 @@ from pages.home_page import HomePage
 if TYPE_CHECKING:
     from playwright.sync_api import Page
 
+pytestmark = pytest.mark.regression
 
+
+@pytest.mark.smoke
 @allure.feature("Authentication")
 @allure.story("Session injection")
 @allure.title("Dashboard opens with an API-injected session")

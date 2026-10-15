@@ -1,0 +1,96 @@
+# CI-пайплайн тестового фреймворка.
+#
+# Запуск — ТОЛЬКО вручную (`workflow_dispatch`): автоматических триггеров
+# (push/pull_request) намеренно нет. При ручном запуске выбирается набор тестов
+# (smoke / regression) либо один конкретный тест по nodeid.
+#
+# Пайплайн переиспользует контейнеризацию проекта (`docker-compose.yml`):
+# поднимаются приложение-мишень, его PostgreSQL и контейнер с pytest, а выбор
+# набора передаётся в контейнер переменной окружения PYTEST_ARGS.
+name: Playwright Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Набор тестов: smoke (быстрый) или regression (полный)"
+        type: choice
+        required: true
+        default: smoke
+        options:
+          - smoke
+          - regression
+      test:
+        description: >-
+          Отдельный тест (путь или nodeid), например
+          tests/api/test_auth.py::test_login_creates_account_and_returns_profile.
+          Если задан — перекрывает выбранный набор.
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # Одновременные ручные запуски одной ветки не отменяют друг друга.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    name: Run Playwright tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare run
+        id: prepare
+        env:
+          SUITE: ${{ inputs.suite }}
+          TEST: ${{ inputs.test }}
+        run: |
+          # Каталоги-артефакты создаём заранее, а контейнер `tests` запускаем от
+          # пользователя раннера (DOCKER_UID/DOCKER_GID): иначе bind-mount тома
+          # принадлежат root, и pytest не может в них писать
+          # (см. `user:` в docker-compose.yml).
+          mkdir -p allure-results logs
+          echo "DOCKER_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "DOCKER_GID=$(id -g)" >> "$GITHUB_ENV"
+
+          if [ -n "$TEST" ]; then
+            pytest_args="$TEST"
+          elif [ "$SUITE" = "smoke" ]; then
+            pytest_args="-m smoke"
+          else
+            pytest_args="-m regression"
+          fi
+
+          echo "pytest_args=$pytest_args" >> "$GITHUB_OUTPUT"
+          echo "Selected pytest arguments: '$pytest_args'"
+
+      - name: Run tests
+        env:
+          PYTEST_ARGS: ${{ steps.prepare.outputs.pytest_args }}
+        run: docker compose up --build --exit-code-from tests
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results
+          if-no-files-found: warn
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs
+          if-no-files-found: warn

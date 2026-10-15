@@ -12,11 +12,14 @@ from __future__ import annotations
 from uuid import uuid4
 
 import allure
+import pytest
 
 from db_manager.crud.plan_db import PlanDB
 from db_manager.crud.subscription_db import SubscriptionDB
 from db_manager.crud.user_db import UserDB
 from models.db import SubscriptionStatus
+
+pytestmark = pytest.mark.regression
 
 
 def _unique_email() -> str:
@@ -48,6 +51,7 @@ def test_created_user_is_stored_in_database(
     assert stored.full_name == "DB Test User"
 
 
+@pytest.mark.smoke
 @allure.feature("Database")
 @allure.story("Catalogue")
 @allure.title("Plans are read from the database")

@@ -3,6 +3,32 @@
 Test automation framework for the **subscription-service-app** (API + UI + DB),
 built with **Playwright**, **Pytest** and **Poetry**.
 
+## Table of contents
+
+- [playwright-test-framework](#playwright-test-framework)
+  - [Table of contents](#table-of-contents)
+  - [Stack](#stack)
+  - [Requirements](#requirements)
+  - [Setup](#setup)
+  - [Configuration](#configuration)
+  - [Architecture](#architecture)
+  - [Project structure](#project-structure)
+  - [Logging](#logging)
+  - [API layer](#api-layer)
+  - [UI layer](#ui-layer)
+    - [Session injection (API → UI)](#session-injection-api--ui)
+  - [Database layer](#database-layer)
+    - [Data teardown](#data-teardown)
+  - [Parallel execution \& process isolation](#parallel-execution--process-isolation)
+  - [Reporting (Allure)](#reporting-allure)
+  - [Linting \& type checking](#linting--type-checking)
+  - [Run tests](#run-tests)
+  - [Containerization (Docker \& Docker Compose)](#containerization-docker--docker-compose)
+    - [Test image (Dockerfile)](#test-image-dockerfile)
+    - [Запуск](#запуск)
+    - [Полезные команды](#полезные-команды)
+  - [Continuous Integration (GitHub Actions)](#continuous-integration-github-actions)
+
 ## Stack
 
 - **Python 3.13** (pinned in `.python-version`)
@@ -14,6 +40,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **pytest-xdist** + **filelock** — parallel execution and cross-process isolation
 - **Allure** (allure-pytest) — test reporting: features/stories, steps, failure screenshots
 - **Docker** + **Docker Compose** — containerised test run against the target app
+- **GitHub Actions** — CI pipeline with manual runs (smoke / regression / single test)
 - **Ruff** — linter and formatter
 - **Mypy** — static type checking
 - **pre-commit** — git hooks
@@ -60,6 +87,65 @@ from config.settings import get_settings
 settings = get_settings()
 settings.base_url
 settings.db_url
+```
+
+## Architecture
+
+Фреймворк построен слоями: тесты оперируют высокоуровневыми объектами
+(API-клиенты, Page Object'ы, репозитории БД), а низкоуровневая детализация
+(HTTP, DOM, SQL) инкапсулирована в соответствующих слоях.
+
+| Слой | Каталог | Ответственность |
+|------|---------|-----------------|
+| Настройки | `config/` | переменные окружения из `.env` через `pydantic-settings` |
+| API | `api_manager/` | HTTP-клиент (`APIClient`) и клиенты эндпоинтов по сущностям |
+| UI | `pages/` | Page Object Model: страницы и бизнес-действия над DOM |
+| БД | `db_manager/` | подключение (psycopg 3) и CRUD-репозитории по таблицам |
+| Модели | `models/api/`, `models/db/` | Pydantic-DTO API и схемы строк БД |
+| Утилиты | `utils/` | логирование (`loguru`), генерация тестовых данных |
+| Тесты | `tests/api/`, `tests/ui/`, `tests/db/` | сценарии и фикстуры (`conftest.py`) |
+
+Поток данных в тесте:
+
+```text
+test → fixture → Page Object / API-клиент / репозиторий БД → Playwright / psycopg
+                                   ↓
+                       Pydantic-модель (валидация ответа или строки)
+```
+
+- Единый источник URL и строки подключения — `.env` (см. [Configuration](#configuration)):
+  `base_url` инжектируется в браузерный контекст, `db_url` — в клиент БД.
+- Авторизация в UI выполняется без прохождения формы: сессия создаётся по API
+  и переносится в браузерный контекст (см. [Session injection](#session-injection-api--ui)).
+- Тестовые данные уникальны (`uuid4`), а созданные сущности зачищаются в teardown
+  (см. [Data teardown](#data-teardown)).
+
+## Project structure
+
+```text
+.
+├── api_manager/            # HTTP-клиент и эндпоинты (API-слой)
+│   └── endpoints/          #   клиенты эндпоинтов по сущностям (auth, ...)
+├── config/                 # настройки и переменные окружения (pydantic-settings)
+├── db_manager/             # подключение к PostgreSQL и CRUD (DB-слой)
+│   └── crud/               #   репозитории таблиц (users, plans, subscriptions)
+├── models/                 # Pydantic-модели
+│   ├── api/                #   DTO запросов и ответов API
+│   └── db/                 #   схемы строк БД и enum-типы
+├── pages/                  # Page Object Model (UI-слой)
+├── tests/                  # тесты и фикстуры
+│   ├── api/                #   API-тесты (+ conftest.py)
+│   ├── ui/                 #   UI-тесты (+ conftest.py)
+│   ├── db/                 #   DB-тесты (+ conftest.py)
+│   ├── conftest.py         #   глобальные фикстуры (логи, Allure, изоляция процессов)
+│   └── test_*.py           #   тесты конфигурации и логирования
+├── utils/                  # вспомогательные утилиты (логирование, данные)
+├── .github/workflows/      # CI-пайплайн (GitHub Actions)
+├── Dockerfile              # образ тестового фреймворка
+├── docker-compose.yml      # приложение-мишень + PostgreSQL + тесты
+├── pytest.ini              # настройки Pytest, маркеры, каталог Allure
+├── pyproject.toml          # зависимости, конфигурация ruff и mypy
+└── .env.example            # шаблон переменных окружения
 ```
 
 ## Logging
@@ -314,9 +400,21 @@ poetry run pre-commit run --all-files   # запустить хуки вручн
 
 ## Run tests
 
+Тесты сгруппированы по маркерам-наборам (объявлены в `pytest.ini`):
+
+- **`smoke`** — критический набор: быстрая проверка ключевых сценариев
+  (конфигурация, авторизация по API, вход через UI, защищённый раздел, чтение БД);
+- **`regression`** — полный регрессионный набор (включает и smoke-тесты).
+
 ```bash
-poetry run pytest            # вся тестовая сессия
-poetry run pytest -n 3       # параллельно, в 3 процесса (pytest-xdist)
+poetry run pytest                 # весь набор
+poetry run pytest -m smoke        # критический набор
+poetry run pytest -m regression   # регрессионный набор
+poetry run pytest -n 3            # параллельно, в 3 процесса (pytest-xdist)
+
+# отдельный путь или тест
+poetry run pytest tests/api/
+poetry run pytest tests/api/test_auth.py::test_login_creates_account_and_returns_profile
 ```
 
 Каждый запуск пишет результаты Allure в `allure-results/` — как посмотреть отчёт,
@@ -437,3 +535,56 @@ docker compose run --rm -e BASE_URL=http://host.docker.internal:8000 tests pytes
   объявлен в основной группе (а не dev): сессионные фикстуры фреймворка
   (`run_manifest`, `_configure_logging`) используют фикстуру `worker_id`, которую
   предоставляет именно этот плагин, — без него тестовый набор не запускается.
+
+## Continuous Integration (GitHub Actions)
+
+Пайплайн описан в `.github/workflows/playwright.yml` и запускается **только
+вручную** (`workflow_dispatch`) — автоматических триггеров (`push`,
+`pull_request`) нет.
+
+Ручной запуск: **Actions → Playwright Tests → Run workflow**. Задаются входы:
+
+| Вход | Тип | Назначение |
+|------|-----|-----------|
+| `suite` | `choice`: `smoke` / `regression` | какой набор запускать |
+| `test` | `string` | отдельный тест (путь или nodeid); если задан — перекрывает `suite` |
+
+Пример значения `test`:
+`tests/api/test_auth.py::test_login_creates_account_and_returns_profile`.
+
+Пайплайн переиспользует контейнеризацию проекта
+(см. [Containerization](#containerization-docker--docker-compose)) и на
+ubuntu-раннере выполняет:
+
+```bash
+docker compose up --build --exit-code-from tests
+```
+
+Выбранный набор передаётся контейнеру `tests` переменной `PYTEST_ARGS`, которую
+Compose подставляет в команду сервиса:
+
+| Выбор | `PYTEST_ARGS` | Команда в контейнере |
+|-------|---------------|----------------------|
+| smoke | `-m smoke` | `pytest -m smoke` |
+| regression | `-m regression` | `pytest -m regression` |
+| отдельный тест | `<nodeid>` | `pytest <nodeid>` |
+
+Перед прогоном workflow создаёт каталоги-артефакты и запускает контейнер `tests`
+от пользователя раннера (`DOCKER_UID`/`DOCKER_GID`), чтобы файлы на bind-mount
+томах принадлежали ему, а не `root`. По завершении (в том числе при падении)
+`allure-results/` и `logs/` выгружаются как артефакты запуска — их можно скачать
+со страницы прогона.
+
+Тот же режим воспроизводится локально:
+
+```bash
+# критический набор
+PYTEST_ARGS='-m smoke' docker compose up --build --exit-code-from tests
+
+# регрессионный набор
+PYTEST_ARGS='-m regression' docker compose up --build --exit-code-from tests
+
+# отдельный тест
+PYTEST_ARGS='tests/api/test_auth.py::test_login_creates_account_and_returns_profile' \
+  docker compose up --build --exit-code-from tests
+```

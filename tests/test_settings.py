@@ -1,8 +1,11 @@
 """Check/Verify для M1: корректность загрузки настроек из `.env`."""
 
 import allure
+import pytest
 
 from config.settings import ENV_FILE, Settings, get_settings
+
+pytestmark = pytest.mark.regression
 
 
 @allure.feature("Framework configuration")
@@ -21,6 +24,7 @@ def test_get_settings_returns_cached_singleton() -> None:
     assert get_settings() is get_settings()
 
 
+@pytest.mark.smoke
 @allure.feature("Framework configuration")
 @allure.story("Settings")
 @allure.title("Required variables are loaded from .env")

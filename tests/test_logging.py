@@ -5,9 +5,12 @@ from __future__ import annotations
 from uuid import uuid4
 
 import allure
+import pytest
 from loguru import logger
 
 from utils.logger import log_context, log_file_for_worker, setup_logging
+
+pytestmark = pytest.mark.regression
 
 
 @allure.feature("Observability")
