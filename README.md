@@ -28,6 +28,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
     - [Запуск](#запуск)
     - [Полезные команды](#полезные-команды)
   - [Continuous Integration (GitHub Actions)](#continuous-integration-github-actions)
+    - [Allure report on GitHub Pages](#allure-report-on-github-pages)
 
 ## Stack
 
@@ -40,7 +41,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **pytest-xdist** + **filelock** — parallel execution and cross-process isolation
 - **Allure** (allure-pytest) — test reporting: features/stories, steps, failure screenshots
 - **Docker** + **Docker Compose** — containerised test run against the target app
-- **GitHub Actions** — CI pipeline with manual runs (smoke / regression / single test)
+- **GitHub Actions** — CI pipeline with manual runs (smoke / regression / single test); the Allure report is published to GitHub Pages
 - **Ruff** — linter and formatter
 - **Mypy** — static type checking
 - **pre-commit** — git hooks
@@ -574,6 +575,43 @@ Compose подставляет в команду сервиса:
 томах принадлежали ему, а не `root`. По завершении (в том числе при падении)
 `allure-results/` и `logs/` выгружаются как артефакты запуска — их можно скачать
 со страницы прогона.
+
+### Allure report on GitHub Pages
+
+После прогона workflow собирает HTML-отчёт Allure и публикует его на
+**GitHub Pages** — отчёт можно открыть в браузере по адресу:
+
+```text
+https://onhorou.github.io/playwright-test-framework/
+```
+
+Как это устроено:
+
+1. **`Configure Pages`** (`actions/configure-pages@v5`) — подготовка параметров
+   публикации;
+2. **`Generate Allure report`** — сборка HTML-отчёта на раннере из
+   `allure-results/`:
+   `npx --yes allure-commandline@2.46.1 generate allure-results -o allure-report --clean`
+   (Node и Java уже есть в `ubuntu-latest`, поэтому инструменты отчётности не
+   добавляются в тестовый образ — см. [Test image](#test-image-dockerfile));
+3. **`Upload Pages artifact`** (`actions/upload-pages-artifact@v3`) — выгрузка
+   каталога `allure-report/` как Pages-артефакта;
+4. **джоб `deploy`** (`actions/deploy-pages@v4`) — публикация артефакта на
+   GitHub Pages и вывод ссылки в **Summary** прогона.
+
+Все шаги сбора и выгрузки помечены `if: always()`, а зависимый джоб `deploy`
+имеет `needs: tests` + `if: always()`, поэтому отчёт собирается и публикуется
+**даже при падении тестов**.
+
+Для публикации в репозитории должны быть один раз включены **GitHub Pages** с
+источником **GitHub Actions** (Settings → Pages → Build and deployment →
+Source: `GitHub Actions`). Workflow запрашивает у `GITHUB_TOKEN` права
+`pages: write` и `id-token: write` (последнее — для OIDC-токена, которым
+`actions/deploy-pages` подтверждает право на деплой).
+
+> Публикуется отчёт только текущего прогона. Истории/трендов между запусками
+> (график стабильности) пока нет: для этого нужно переносить каталог `history/`
+> из предыдущего отчёта.
 
 Тот же режим воспроизводится локально:
 

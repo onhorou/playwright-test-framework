@@ -29,8 +29,13 @@ on:
         required: false
         default: ""
 
+# `pages: write` — публикация Allure-отчёта на GitHub Pages;
+# `id-token: write` — запрос OIDC-токена, которым `actions/deploy-pages`
+# подтверждает право на деплой.
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   # Одновременные ручные запуски одной ветки не отменяют друг друга.
@@ -79,6 +84,26 @@ jobs:
           PYTEST_ARGS: ${{ steps.prepare.outputs.pytest_args }}
         run: docker compose up --build --exit-code-from tests
 
+      # ── Публикация Allure-отчёта на GitHub Pages ─────────────────────────────
+      # HTML-отчёт собирается прямо на раннере (в `ubuntu-latest` есть Node и
+      # Java), а не в тестовом образе: образ содержит только runtime-зависимости
+      # (см. Dockerfile), инструменты отчётности в него не попадают.
+      # Все шаги помечены `if: always()`, чтобы отчёт был собран и опубликован
+      # даже при падении тестов.
+      - name: Configure Pages
+        if: always()
+        uses: actions/configure-pages@v5
+
+      - name: Generate Allure report
+        if: always()
+        run: npx --yes allure-commandline@2.46.1 generate allure-results -o allure-report --clean
+
+      - name: Upload Pages artifact
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: allure-report
+
       - name: Upload Allure results
         if: always()
         uses: actions/upload-artifact@v4
@@ -94,3 +119,31 @@ jobs:
           name: logs
           path: logs
           if-no-files-found: warn
+
+  # Публикация собранного отчёта на GitHub Pages. Джоб вынесен отдельно —
+  # так рекомендует `actions/deploy-pages` (деплой требует своего окружения
+  # и прав). `needs: tests` плюс `if: always()` нужны, чтобы отчёт публиковался
+  # и при падении тестов (иначе зависимый джоб был бы пропущен).
+  deploy:
+    name: Deploy Allure report
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      # Одновременные деплои Pages не допускаются (требование механизма).
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summarize report URL
+        run: |
+          echo "Allure report: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
