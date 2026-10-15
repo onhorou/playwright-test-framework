@@ -13,6 +13,7 @@ built with **Playwright**, **Pytest** and **Poetry**.
 - **Loguru** — logging
 - **pytest-xdist** + **filelock** — parallel execution and cross-process isolation
 - **Allure** (allure-pytest) — test reporting: features/stories, steps, failure screenshots
+- **Docker** + **Docker Compose** — containerised test run against the target app
 - **Ruff** — linter and formatter
 - **Mypy** — static type checking
 - **pre-commit** — git hooks
@@ -250,6 +251,9 @@ npm install -g allure-commandline
 
 # или запускать разово без установки
 npx allure-commandline --help
+
+# перегенерить отчет в /allure-report
+npx allure-commandline generate --clean
 ```
 
 ```bash
@@ -317,3 +321,119 @@ poetry run pytest -n 3       # параллельно, в 3 процесса (py
 
 Каждый запуск пишет результаты Allure в `allure-results/` — как посмотреть отчёт,
 см. раздел [Reporting](#reporting-allure).
+
+## Containerization (Docker & Docker Compose)
+
+Тесты можно запускать целиком в контейнерах — вместе с приложением-мишенью и его
+базой данных. Это убирает ручную подготовку окружения: достаточно Docker.
+
+| Файл | Назначение |
+|------|-----------|
+| `Dockerfile` | образ тестового фреймворка (сервис `tests`) |
+| `docker-compose.yml` | оркестрация трёх сервисов в общей сети Compose |
+| `.dockerignore` | что не попадает в контекст сборки (`.git`, `.venv`, `.env`, артефакты, ...) |
+
+`docker-compose.yml` поднимает:
+
+- **`postgres_db`** — БД приложения (`postgres:16-alpine`), доступна тестам по имени
+  сервиса (`postgres_db:5432`);
+- **`webapp`** — приложение-мишень `subscription-service-app`. Образ собирается
+  **напрямую из Git-репозитория** (`build.context` — Git-URL), поэтому локальный
+  клон приложения не нужен: BuildKit сам клонирует контекст сборки. Перед стартом
+  сервера контейнер применяет миграции (`alembic upgrade head`);
+- **`tests`** — образ фреймворка, который запускает `pytest` против приложения и БД.
+
+Сервис `tests` стартует только после того, как `webapp` пройдёт healthcheck
+(`/healthz`), а тот, в свою очередь, — после готовности `postgres_db`
+(`condition: service_healthy`). URL и строка подключения передаются контейнеру
+через переменные окружения `BASE_URL=http://webapp:8000` и
+`DB_URL=postgresql://...@postgres_db:5432/...` — тот же контракт, что и локально
+(см. [Configuration](#configuration)).
+
+> Сервис приложения назван `webapp`, а не `app`, намеренно: `app` — это
+> HSTS-preloaded TLD, поэтому Chromium принудительно переводит `http://app` на
+> HTTPS и UI-тесты падают с `net::ERR_SSL_PROTOCOL_ERROR`.
+
+### Test image (Dockerfile)
+
+Образ построен на `mcr.microsoft.com/playwright/python`, причём тег **жёстко
+привязан к версии Playwright из `poetry.lock`**:
+
+```dockerfile
+FROM mcr.microsoft.com/playwright/python:v1.63.0-noble
+```
+
+Версия в теге должна совпадать с Python-зависимостью `playwright` — иначе
+Playwright не найдёт исполняемые файлы браузеров. В образе уже есть
+`chromium`/`firefox`/`webkit` и их системные зависимости, поэтому отдельная
+установка браузеров (`playwright install`) не требуется.
+
+Базовый образ содержит Python 3.12, а проект фиксирует Python 3.13
+(`requires-python`), поэтому в `Dockerfile` Python 3.13 ставится сверху из PPA
+`deadsnakes`, после чего Poetry ставит **основную** группу зависимостей проекта
+(`poetry install --only main --no-root`). Dev-инструменты (ruff, mypy, pre-commit)
+в образ не попадают. Команда по умолчанию — `pytest`.
+
+### Запуск
+
+```bash
+# сборка образов и прогон всего набора; код возврата берётся от сервиса `tests`
+docker compose up --build --exit-code-from tests
+
+# если образы уже собраны — сборку можно не форсировать
+docker compose up --exit-code-from tests
+```
+
+`--exit-code-from tests` заставляет Compose завершить работу и вернуть код выхода
+сервиса `tests`, поэтому команда годится для CI. По окончании прогона все
+контейнеры останавливаются, а БД удаляется.
+
+Артефакты прогона сохраняются на хосте через тома, поэтому их можно посмотреть и
+после остановки контейнеров:
+
+```bash
+# Allure-результаты из контейнера -> HTML-отчёт (см. Reporting)
+allure generate allure-results -o allure-report --clean
+```
+
+- `./allure-results` — результаты Allure (`pytest.ini` пишет их туда же, что и локально);
+- `./logs` — логи фреймворка (`logs/framework.log`).
+
+### Полезные команды
+
+```bash
+# пересобрать образ тестов после изменения зависимостей
+docker compose build tests
+
+# разовый прогон отдельного набора/файла
+docker compose run --rm tests pytest tests/api
+
+# отключить сервис `webapp`, если приложение уже запущено на хосте
+# (тогда задайте BASE_URL=http://host.docker.internal:8000)
+docker compose run --rm -e BASE_URL=http://host.docker.internal:8000 tests pytest tests/api
+```
+
+Приложение-мишень собирается из Git-URL. Если приложение разрабатывается локально,
+замените контекст сборки сервиса `webapp` на путь к его каталогу:
+
+```yaml
+    build:
+      context: ../subscription-service-app
+      dockerfile: Dockerfile
+```
+
+Примечания:
+
+- контейнер `tests` запускается от **пользователя хоста** (`uid/gid`, по умолчанию
+  `1000:1000`) — так артефакты на смонтированных томах остаются доступными
+  локальному пользователю. При другом `uid/gid` задайте `DOCKER_UID`/`DOCKER_GID`
+  (см. `user:` в `docker-compose.yml`); Chromium в образе работает и не от root;
+- сервису `tests` включены `ipc: host` (Chromium требует общий раздел памяти) и
+  `init: true` (reaper процессов против зомби-процессов);
+- `.env` в контекст сборки не попадает (секреты), но образ создаёт `.env` в корне
+  проекта (`/tests/.env`) из `.env.example`: фактические `BASE_URL`/`DB_URL` приходят
+  переменными окружения Compose, которые в `pydantic-settings` имеют приоритет над `.env`;
+- в образ ставится только **основная** группа зависимостей. `pytest-xdist`
+  объявлен в основной группе (а не dev): сессионные фикстуры фреймворка
+  (`run_manifest`, `_configure_logging`) используют фикстуру `worker_id`, которую
+  предоставляет именно этот плагин, — без него тестовый набор не запускается.

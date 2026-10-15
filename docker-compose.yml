@@ -1,0 +1,83 @@
+# Docker Compose для запуска автотестов против приложения-мишени.
+#
+# Поднимаются три сервиса в общей сети Compose:
+#   postgres_db — БД приложения (`postgres:16-alpine`);
+#   webapp      — приложение-мишень `subscription-service-app`. Собирается
+#                 НАПРЯМУЮ из Git-репозитория: BuildKit умеет клонировать
+#                 контекст сборки по URL, поэтому локальный клон приложения
+#                 не требуется;
+#   tests       — тестовый фреймворк (см. `Dockerfile`), запускает `pytest`
+#                 против приложения и БД внутри сети Compose.
+#
+# Имя сервиса `webapp` (а не `app`) выбрано намеренно: `app` — это HSTS-preloaded
+# TLD, и Chromium принудительно переводит `http://app` на HTTPS
+# (`net::ERR_SSL_PROTOCOL_ERROR` в UI-тестах).
+#
+# Запуск (сборка + прогон, код возврата — от сервиса `tests`):
+#   docker compose up --build --exit-code-from tests
+name: playwright-test-framework
+
+services:
+  postgres_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-library}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-library}
+      POSTGRES_DB: ${POSTGRES_DB:-library}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-library} -d ${POSTGRES_DB:-library}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  webapp:
+    # Контекст сборки — Git-URL приложения-мишени (ветка `main`).
+    build:
+      context: "https://github.com/onhorou/subscription-service-app.git#main"
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-dev-secret-change-me}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-library}:${POSTGRES_PASSWORD:-library}@postgres_db:5432/${POSTGRES_DB:-library}
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    # Сначала применить миграции к БД, затем запустить сервер: в самом
+    # Dockerfile приложения CMD миграции не выполняет (в его compose-файле
+    # команда переопределена так же).
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      webapp:
+        condition: service_healthy
+    environment:
+      # Внутри сети Compose приложение и БД доступны по именам сервисов.
+      BASE_URL: http://webapp:8000
+      DB_URL: postgresql://${POSTGRES_USER:-library}:${POSTGRES_PASSWORD:-library}@postgres_db:5432/${POSTGRES_DB:-library}
+    # Chromium в контейнере требует общего раздела памяти (документация Playwright).
+    ipc: host
+    # Reaper процессов: предотвращает зомби-процессы (PID 1).
+    init: true
+    # Контейнер запускается от пользователя хоста (uid/gid), иначе артефакты на
+    # смонтированных томах будут принадлежать root и сломают локальный прогон
+    # (запись в `logs/framework.log`). При другом uid/gid задайте:
+    #   export DOCKER_UID=$(id -u) DOCKER_GID=$(id -g)
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    volumes:
+      # Артефакты прогона сохраняются на хосте.
+      - ./allure-results:/tests/allure-results
+      - ./logs:/tests/logs

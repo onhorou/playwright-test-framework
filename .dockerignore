@@ -1,0 +1,29 @@
+# Контекст сборки образа тестового фреймворка (docker build / docker compose build).
+# Всё перечисленное в образ не попадает.
+
+# Git и локальные инструменты разработки
+.git
+.github
+.gitignore
+.pre-commit-config.yaml
+.clinerules
+.vscode
+
+# Локальное окружение и секреты (в контейнер передаются переменные окружения)
+.venv
+.env
+
+# Внутренние заметки проекта
+memory-bank
+
+# Кэши Python
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Артефакты прогонов (монтируются в контейнер как тома)
+allure-results
+allure-report
+logs
